@@ -7,7 +7,6 @@ A cli is exposed at `ibl_github_bot/__main__.py`.
 You can use this cli as
 ```shell
 $ python -m ibl_github_bot --help
-
 Usage: python -m ibl_github_bot [OPTIONS]
 
 Options:
@@ -16,13 +15,16 @@ Options:
   --branch TEXT        Branch to clone repository from.
   --github-token TEXT  Github token used to authenticate and clone repository.
                        Token must have write access to the repository.
+  -f, --file TEXT      Target file in repository to test. Defaults to all
+                       files. You can pass multiple files with -f file1 -f
+                       file2
   --cleanup            Delete cloned repository after test generation.
   --help               Show this message and exit.
 ```
 
 For example
-```
-$ python -m  ibl_github_bot --repo ibleducation/ibl-ai-bot-app --branch slack --cleanup
+```shell
+$ python -m  ibl_github_bot --repo ibleducation/ibl-ai-bot-app --branch slack --cleanup -f ibl_ai_bot/views.py
 ```
 > [!IMPORTANT]
 > You may export github token as environment variable or place it in a `.env` file in the current working directory. \

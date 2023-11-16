@@ -27,22 +27,29 @@ load_dotenv(find_dotenv())
     help="Github token used to authenticate and clone repository. Token must have write access to the repository.",
 )
 @click.option(
+    "--file",
+    "-f", 
+    multiple=True, help="Target file in repository to test. Defaults to all files. You can pass multiple files with -f file1 -f file2"
+)
+@click.option(
     "--cleanup",
     is_flag=True,
     default=False,
     help="Delete cloned repository after test generation.",
 )
-def main(repo: str, branch: str, github_token: str, cleanup: bool = True):
+def main(repo: str, branch: str, github_token: str, cleanup: bool = True, file: list[str]=None):
     if not github_token:
         github_token = os.getenv("GH_TOKEN")
     if not github_token:
         raise ValueError(
             "Please provide a github token or store it as `GH_TOKEN` environment variable."
         )
+    print(files)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(
         create_tests_for_repo(
-            "Joetib", repo, branch, token=github_token, cleanup=cleanup
+            "Joetib", repo, branch, token=github_token, cleanup=cleanup,
+            target_files=file
         )
     )
 

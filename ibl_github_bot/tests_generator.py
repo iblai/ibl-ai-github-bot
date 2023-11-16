@@ -291,6 +291,7 @@ def generate_tests(
     dependency_graph: DependencyGraph,
     sub_path: Path = None,
     test_dir: Path = None,
+    target_files: list[Path] = None,
 ):
     if sub_path == None:
         sub_path = directory
@@ -348,16 +349,23 @@ def generate_tests(
         model="gpt-4-1106-preview",
         temperature=0,
     )
-    for document in tqdm.tqdm(
-        [
-            document
-            for document in documents
-            if Path(document.metadata["source"]).is_relative_to(sub_path)
-            and document.page_content.strip() != ""
-            and Path(document.metadata["source"]).parent.name
-            not in [*exclude_dirs, "tests"]
-        ]
-    ):
+    target_documents = [
+        document
+        for document in documents
+        if Path(document.metadata["source"]).is_relative_to(sub_path)
+        and document.page_content.strip() != ""
+        and Path(document.metadata["source"]).parent.name
+        not in [*exclude_dirs, "tests"]
+    ]
+    # filter target files.
+    if target_files:
+        target_documents = [document for document in target_documents if Path(document.metadata["source"]) in target_files]
+
+    if not target_documents:
+        logger.info("No tests generated for %s", sub_path)
+        return False
+    
+    for document in tqdm.tqdm(target_documents):
         msg = chain.invoke(
             [
                 *messages,
@@ -413,6 +421,7 @@ async def create_tests_for_repo(
     branch: str = "main",
     token: str = os.getenv("GH_TOKEN"),
     cleanup: bool = True,
+    target_files: list[str] | None = None,
 ):
     """
     Asynchronously creates tests for a repository.
@@ -426,11 +435,14 @@ async def create_tests_for_repo(
     Returns:
         None
     """
+    if not target_files:
+        target_files = []
     repo_username, repo_name = repo.split("/")
     index = str(uuid.uuid4())
     while (BASE_DIR / index).exists():
         index = str(uuid.uuid4())
     local_dir = BASE_DIR / index
+    target_file_paths = [local_dir / file for file in target_files]
 
     local_dir.mkdir(parents=True)
     logging.info("Cloning repository into %s", local_dir)
@@ -447,6 +459,7 @@ async def create_tests_for_repo(
     logging.info("Successfully cloned repository into %s", local_dir)
     date = datetime.datetime.today().strftime("%A %B %d %Y, %X")
     logging.info("generating tests")
+    created_commit = False
     for directory in local_dir.iterdir():
         if (
             directory.is_dir()
@@ -457,9 +470,11 @@ async def create_tests_for_repo(
                 dependency_graph=dependency_graph,
                 sub_path=directory,
                 test_dir=directory / "tests",
+                target_files=target_file_paths,
             )
             if not success:
                 continue
+            
             local_repo.index.add((directory / "tests").relative_to(local_dir))
             local_repo.index.commit(
                 f"auto-generated tests for {directory.relative_to(local_dir)} on {date}"
@@ -467,6 +482,10 @@ async def create_tests_for_repo(
             logging.info(
                 f"Created commit with message: auto-generated tests for {directory.relative_to(local_dir)} on {date}"
             )
+            created_commit = True
+    if not created_commit:
+        logging.info("No tests generated")
+        return
     logging.info("Pushing to remote branch %s" % new_branch)
     local_repo.remote().push("{}:{}".format(new_branch, new_branch)).raise_if_error()
 
