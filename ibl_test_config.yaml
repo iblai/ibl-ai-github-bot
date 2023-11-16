@@ -1,0 +1,10 @@
+exclude:
+    - .git
+    - __pycache__
+    - tests
+    - requirements
+test_library: pytest
+frameworks:
+    - langchain
+    - gidgethub
+language: python

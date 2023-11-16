@@ -1,3 +1,4 @@
+import random
 from langchain.chat_models import ChatOpenAI
 from langchain.schema.messages import HumanMessage, SystemMessage
 from langchain.document_loaders import PythonLoader, DirectoryLoader
@@ -13,6 +14,9 @@ import uuid
 from pathlib import Path
 import shutil
 import datetime
+from ibl_github_bot.configuration import DependencyGraph
+from langchain.schema import Document
+import concurrent
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +43,18 @@ class CodeParser:
             ast.parse(text)
             return text, True
         except Exception as e:
-            print(e)
-            print("Error parsing text as code")
-            print(text)
+            logging.error(e)
+            logging.error("Error parsing text as code")
+            logging.info("Defaulting text: \n%s", text)
         return text, False
 
 
-system_message = SystemMessage(
-    content="""You are an experienceed django and pytest developer. \
-You have been given a set of python files in a django project \
-You are expected to generate pytest compliant tests for a file specified by the user.
+SYTEM_MESSAGE_STR = """You are an experienced {language}, {frameworks} and {test_library} developer. \
+You have been given a set of python files in a project written in the {frameworks} and {test_library} \
+You are expected to generate {language}, {frameworks} and {test_library} compliant tests for a file specified by the user. \
+You are expected to follow best practices for {frameworks} and {test_library} tests. \
+Where tests already exist, you are required to extend the existing tests. \
+Make you test cases as extensive as possible.
 
 The project is loaded in the format
 
@@ -83,15 +89,16 @@ def conent():
     pass
 ```
 
-You are then expected to generate pytests for a file among these lists as specified by the user.
+You are then expected to generate tests for a file among these lists as specified by the user.
 
 For example:
-Generate pytest compatible test file for file1.py
+Generate {test_library} compatible test file for file1.py
 
 The output you yield must contain only the code output for the generated tests. Do not include any extra content. \
-Make sure your output is python compliant and wrapped in starting ```python\n and ending with \n```
-Do not forget to use "@pytest.mark.django_db" decorator on all tests
-Also wherever you need a reference to the `User` models, use django.contrib.auth.get_user_model to get the user model.
+Make sure your output is {language} compliant and wrapped in starting ```{language}\n and ending with \n```
+Ensure that appropriate markers are placed on tests.
+For instance where the test library is "pytest" and framework is "Django", you must use "@oytest.mark.django_db" decorator on all tests
+Also in django projects, wherever you need a reference to the `User` models, use django.contrib.auth.get_user_model to get the user model. 
 
 For example
 ```python
@@ -120,44 +127,193 @@ In cases where the file mentioned by the user is empty, return the following out
  file
 ```
 
-Also if tests for a specific file already exists, include both the existing written tests and your own tests in the output test you writes.
-Also you can use the contents of existing test files to know if there are any external functions or components you can call.
+Also if tests for a specific file already exists, include both the existing written tests and your own tests in the output test you writes. \
+I repeat, you are to extend the existing tests if a test file already exists within a module for the file specified by the user. \
+Also you can use the contents of existing test files to know if there are any external functions or components you can call. \
 Also ensure that you return only the test file contents and not any extra content.
+
+Here are the details again:
+Frameworks: {frameworks}
+Testing library: {test_library}
+Programming Language: {language}
 """
-)
+
+
+class CustomDirectoryLoader(DirectoryLoader):
+    """Load from a directory"""
+
+    def __init__(
+        self,
+        path: str,
+        current_module: str,
+        glob: str = "**/[!.]*",
+        silent_errors: bool = False,
+        load_hidden: bool = False,
+        loader_cls=PythonLoader,
+        loader_kwargs: dict | None = None,
+        recursive: bool = False,
+        show_progress: bool = False,
+        use_multithreading: bool = False,
+        max_concurrency: int = 4,
+        *,
+        sample_size: int = 0,
+        randomize_sample: bool = False,
+        sample_seed: int | None = None,
+        exclude_dirs: list | None = None,
+        dependent_modules: list | None = None,
+    ):
+        """
+        Initializes a new instance of the class.
+
+        Args:
+            path (str): The path to the directory to be parsed.
+            current_module (str): The name of the current module.
+            glob (str, optional): The glob pattern for matching files. Defaults to "**/[!.]*".
+            silent_errors (bool, optional): Whether to suppress error messages. Defaults to False.
+            load_hidden (bool, optional): Whether to load hidden files. Defaults to False.
+            loader_cls (type, optional): The class responsible for loading files. Defaults to PythonLoader.
+            loader_kwargs (dict or None, optional): Additional keyword arguments to pass to the loader class. Defaults to None.
+            recursive (bool, optional): Whether to search for files recursively. Defaults to False.
+            show_progress (bool, optional): Whether to show progress while parsing files. Defaults to False.
+            use_multithreading (bool, optional): Whether to use multithreading for parsing files. Defaults to False.
+            max_concurrency (int, optional): The maximum number of threads or processes to use for parsing files. Defaults to 4.
+            sample_size (int, optional): The number of files to sample for parsing. Defaults to 0.
+            randomize_sample (bool, optional): Whether to randomize the order of the sampled files. Defaults to False.
+            sample_seed (int or None, optional): The seed value for randomizing the sample. Defaults to None.
+            exclude_dirs (list or None, optional): A list of directories to exclude from parsing. Defaults to None.
+            dependent_modules (list or None, optional): A list of dependent modules to consider when parsing. Defaults to None.
+
+        Returns:
+            None
+        """
+
+        if not exclude_dirs:
+            exclude_dirs = []
+        if not dependent_modules:
+            dependent_modules = []
+
+        super().__init__(
+            path=path,
+            glob=glob,
+            silent_errors=silent_errors,
+            load_hidden=load_hidden,
+            loader_cls=loader_cls,
+            loader_kwargs=loader_kwargs,
+            recursive=recursive,
+            show_progress=show_progress,
+            use_multithreading=use_multithreading,
+            max_concurrency=max_concurrency,
+            sample_size=sample_size,
+            randomize_sample=randomize_sample,
+            sample_seed=sample_seed,
+        )
+        self.exclude_dirs = exclude_dirs
+        self.dependent_modules = dependent_modules
+        self.current_module = current_module
+
+    def is_in_exclude(self, path: Path):
+        first_pass = any(
+            d in path.relative_to(self.path).parts for d in self.exclude_dirs
+        )
+        if first_pass:
+            return True
+        for d in self.exclude_dirs:
+            if path.is_relative_to(self.path / d):
+                return True
+        return False
+
+    def is_in_dependent_modules(self, path: Path):
+        if not self.dependent_modules:
+            return True
+        parts = path.relative_to(self.path).parts
+        if parts:
+            return parts[0] in [*self.dependent_modules, self.current_module]
+        return False
+
+    def load(self) -> list[Document]:
+        """Load documents."""
+        p = Path(self.path)
+        if not p.exists():
+            raise FileNotFoundError(f"Directory not found: '{self.path}'")
+        if not p.is_dir():
+            raise ValueError(f"Expected directory, got file: '{self.path}'")
+
+        docs: list[Document] = []
+        items = list(p.rglob(self.glob) if self.recursive else p.glob(self.glob))
+        # filtering out excluded directories
+        items = [path for path in items if self.is_in_dependent_modules(path)]
+        items = [path for path in items if not self.is_in_exclude(path)]
+
+        if self.sample_size > 0:
+            if self.randomize_sample:
+                randomizer = (
+                    random.Random(self.sample_seed) if self.sample_seed else random
+                )
+                randomizer.shuffle(items)  # type: ignore
+            items = items[: min(len(items), self.sample_size)]
+
+        pbar = None
+        if self.show_progress:
+            try:
+                from tqdm import tqdm
+
+                pbar = tqdm(total=len(items))
+            except ImportError as e:
+                logger.warning(
+                    "To log the progress of DirectoryLoader you need to install tqdm, "
+                    "`pip install tqdm`"
+                )
+                if self.silent_errors:
+                    logger.warning(e)
+                else:
+                    raise ImportError(
+                        "To log the progress of DirectoryLoader "
+                        "you need to install tqdm, "
+                        "`pip install tqdm`"
+                    )
+
+        if self.use_multithreading:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_concurrency
+            ) as executor:
+                executor.map(lambda i: self.load_file(i, p, docs, pbar), items)
+        else:
+            for i in items:
+                self.load_file(i, p, docs, pbar)
+
+        if pbar:
+            pbar.close()
+
+        return docs
 
 
 def generate_tests(
     directory: Path,
+    dependency_graph: DependencyGraph,
     sub_path: Path = None,
     test_dir: Path = None,
-    exclude_dirs=[
-        "migrations",
-    ],
 ):
     if sub_path == None:
         sub_path = directory
     if test_dir == None:
         test_dir = sub_path / "tests"
+    if sub_path.name in dependency_graph.get_global_settings()["exclude"]:
+        return False
+    module_name = sub_path.relative_to(directory).name
+    exclude_dirs = dependency_graph.get_all_excludes(module_name)
+    dependent_modules = dependency_graph.get_all_dependencies(module_name)
 
-    documents = DirectoryLoader(
+    documents = CustomDirectoryLoader(
         path=directory,
         glob="*.py",
         recursive=True,
         show_progress=True,
         loader_cls=PythonLoader,
+        exclude_dirs=exclude_dirs,
+        dependent_modules=dependent_modules,
+        current_module=module_name,
     ).load()
-    print("Removing migration files")
-    length = len(documents)
-    documents = [
-        document
-        for document in documents
-        if Path(document.metadata["source"]).parent.name not in exclude_dirs
-    ]
-    print("Removed %d files" % (len(documents) - length))
-    if not documents:
-        print("No documents left after removing migration files")
-        return
+
     test_dir.mkdir(exist_ok=True)
     if not (test_dir / "__init__.py").exists():
         (test_dir / "__init__.py").touch()
@@ -176,9 +332,15 @@ def generate_tests(
         )
         for document in documents
     ]
-
-    # print(files_messages)
-
+    global_settings = dependency_graph.get_global_settings()
+    system_message = SystemMessage(
+        content=SYTEM_MESSAGE_STR.format(
+            test_library=global_settings["test_library"],
+            frameworks=", ".join(global_settings["frameworks"]),
+            language=global_settings["language"],
+        )
+    )
+    print(system_message)
     messages = [
         system_message,
         *files_messages,
@@ -205,8 +367,12 @@ def generate_tests(
                     content=[
                         {
                             "type": "text",
-                            "text": "Generate pytest compatible test file for %s"
-                            % Path(document.metadata["source"]).relative_to(directory),
+                            "text": "Generate {test_library} compatible test file for {filename}".format(
+                                filename=Path(document.metadata["source"]).relative_to(
+                                    directory
+                                ),
+                                test_library=global_settings["test_library"],
+                            ),
                         }
                     ]
                 ),
@@ -239,6 +405,8 @@ def generate_tests(
         ) as f:
             f.write(content)
 
+    return True
+
 
 async def create_tests_for_repo(
     username: str,
@@ -269,29 +437,35 @@ async def create_tests_for_repo(
     logging.info("Cloning repository into %s", local_dir)
     repo_url = f"https://{token}@github.com/{repo}.git"
     logging.info("Cloning repo url [%s]", repo_url)
-    new_branch = f"auto-tests-{index}"
+    new_branch = f"auto-tests-iblai-{index}"
     local_repo = git.Repo.clone_from(repo_url, local_dir, branch=branch)
     remote = local_repo.remote("origin")
     local_repo.git.checkout(branch)
     remote.pull()
     local_repo.git.checkout("-b", new_branch)
+    dependency_graph = DependencyGraph(local_dir / "ibl_test_config.yaml")
+
     logging.info("Successfully cloned repository into %s", local_dir)
-    date = datetime.datetime.today().isoformat()
+    date = datetime.datetime.today().strftime("%A %B %d %Y, %X")
     logging.info("generating tests")
     for directory in local_dir.iterdir():
-        if directory.is_dir() and directory.name not in [
-            ".git",
-            "tests",
-            "migrations",
-            "__pycache__",
-        ]:
-            generate_tests(
-                directory=local_dir, sub_path=directory, test_dir=directory / "tests"
+        if (
+            directory.is_dir()
+            and directory.name not in dependency_graph.get_global_settings()["exclude"]
+        ):
+            success = generate_tests(
+                directory=local_dir,
+                dependency_graph=dependency_graph,
+                sub_path=directory,
+                test_dir=directory / "tests",
             )
+            if not success:
+                continue
             local_repo.index.add((directory / "tests").relative_to(local_dir))
             local_repo.index.commit(
                 f"auto-generated tests for {directory.relative_to(local_dir)} on {date}"
             )
+            logging.info(f"Created commit with message: auto-generated tests for {directory.relative_to(local_dir)} on {date}")
     logging.info("Pushing to remote branch %s" % new_branch)
     local_repo.remote().push("{}:{}".format(new_branch, new_branch)).raise_if_error()
 
@@ -302,8 +476,11 @@ async def create_tests_for_repo(
         results = await gh.post(
             f"/repos/{repo}/pulls",
             data={
-                "title": f"Auto-test from ibl_test_generator on {date}",
-                "body": "Dear Admin I have generated tests for you. Thank you. And would be glad if you could check them out. \n ♡ ♥💕❤😘",
+                "title": f"Auto-tests generated by ibl.ai ⚡",
+                "body": """> [!IMPORTANT] \
+                        \n> Remember to check out the pull request and run the tests before merging. \
+                        \n> Thank you.
+                        """,
                 "head": f"{repo_username}:{new_branch}",
                 "base": branch,
             },
