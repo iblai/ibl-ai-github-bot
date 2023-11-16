@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 BASE_DIR = Path.cwd() / "cached-repos"
-logging.basicConfig()
 
 
 class CodeParser:
@@ -50,7 +49,7 @@ class CodeParser:
 
 
 SYTEM_MESSAGE_STR = """You are an experienced {language}, {frameworks} and {test_library} developer. \
-You have been given a set of python files in a project written in the {frameworks} and {test_library} \
+You have been given a set of {language} files in a project written in  {frameworks} and {test_library} \
 You are expected to generate {language}, {frameworks} and {test_library} compliant tests for a file specified by the user. \
 You are expected to follow best practices for {frameworks} and {test_library} tests. \
 Where tests already exist, you are required to extend the existing tests. \
@@ -97,22 +96,22 @@ Generate {test_library} compatible test file for file1.py
 The output you yield must contain only the code output for the generated tests. Do not include any extra content. \
 Make sure your output is {language} compliant and wrapped in starting ```{language}\n and ending with \n```
 Ensure that appropriate markers are placed on tests.
-For instance where the test library is "pytest" and framework is "Django", you must use "@oytest.mark.django_db" decorator on all tests
+
+In situations where the test library is "pytest" and framework is "Django", kindly "@oytest.mark.django_db" decorator on all tests \
+if the framework is not "django", please do not use this decorator. \
 Also in django projects, wherever you need a reference to the `User` models, use django.contrib.auth.get_user_model to get the user model. 
 
-For example
+Here is a sample test with django as framework and unittest as testing library.
 ```python
 # test for file1.py
-import pytest
 from django.contrib.auth  import get_user_model
+from django.tests import TestCase
 User = get_user_model()
 
-@pytest.mark.django_db
 def test_content():
     pass
     
-@pytest.mark.django_db
-class TestBotViewSet:
+class TestBotViewSet(TestCase)
     @classmethod
     def setup_method(cls):
         pass
@@ -340,7 +339,6 @@ def generate_tests(
             language=global_settings["language"],
         )
     )
-    print(system_message)
     messages = [
         system_message,
         *files_messages,
@@ -380,18 +378,19 @@ def generate_tests(
         )
         content, success = CodeParser().parse(msg.content)
         if not success:
-            print("Failed to generate test for %s", document.metadata["source"])
-            continue
-        # print(content)
-        if not content.strip():
-            print(
-                "skipping %s no tests generated"
-                % Path(document.metadata["source"]).relative_to(directory)
+            logger.warning(
+                "Failed to generate test for %s", document.metadata["source"]
             )
             continue
-        print(
-            "Generated tests for %s"
-            % Path(document.metadata["source"]).relative_to(directory)
+        if not content.strip():
+            logger.info(
+                "skipping %s no tests generated",
+                Path(document.metadata["source"]).relative_to(directory),
+            )
+            continue
+        logger.info(
+            "Generated tests for %s",
+            Path(document.metadata["source"]).relative_to(directory),
         )
         with open(
             test_dir
@@ -465,7 +464,9 @@ async def create_tests_for_repo(
             local_repo.index.commit(
                 f"auto-generated tests for {directory.relative_to(local_dir)} on {date}"
             )
-            logging.info(f"Created commit with message: auto-generated tests for {directory.relative_to(local_dir)} on {date}")
+            logging.info(
+                f"Created commit with message: auto-generated tests for {directory.relative_to(local_dir)} on {date}"
+            )
     logging.info("Pushing to remote branch %s" % new_branch)
     local_repo.remote().push("{}:{}".format(new_branch, new_branch)).raise_if_error()
 

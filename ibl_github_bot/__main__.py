@@ -3,6 +3,9 @@ import asyncio
 import os
 from ibl_github_bot.tests_generator import create_tests_for_repo
 from dotenv import load_dotenv, find_dotenv
+import logging
+logging.basicConfig(level=logging.INFO)
+
 
 load_dotenv(find_dotenv())
 
