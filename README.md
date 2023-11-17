@@ -1,6 +1,6 @@
 # IBL GitHub Bot
 
-Uses GPT-4 to automatically generates tests based on `pytest`.
+Uses GPT-4 to automatically generate tests based on `pytest`.
 
 A cli is exposed at `ibl_github_bot/__main__.py`.
 
