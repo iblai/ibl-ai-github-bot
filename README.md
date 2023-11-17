@@ -1,6 +1,6 @@
 # IBL GitHub Bot
 
-Automatically generates tests based on `pytest`.
+Uses GPT-4 to automatically generates tests based on `pytest`.
 
 A cli is exposed at `ibl_github_bot/__main__.py`.
 
@@ -40,14 +40,14 @@ A new branch and related pull request will be created on the repository specifie
 
 ## Environment Variables
 
-Environment variables for **IBL Github Bot** can be placed in a `.env` file in the current working directory or exported as system environment variables. 
-Here are a list of configurable environment variables
+Place the following variables in an `.env` file in the current working directory, or exported as system environment variables:
 
-1. **GH_TOKEN**: This is stores a valid github token to be used by the bot to pull repositories, push commits and create pull requests
-2. **GH_USERNAME**: The appropriate username associated with the github token
-3. **OPENAI_API_KEY**: A valid Openai key with gpt4 access. This is **mandatory**.
+1. **GH_TOKEN**: This stores a valid GitHub token to be used by the bot to pull repositories, push commits and create pull requests.
+2. **GH_USERNAME**: The appropriate username associated with the GitHub token.
+3. **OPENAI_API_KEY**: A valid OpenAI key with GPT4 access.
 
-Below is a sample `.env` file
+Below is a sample `.env` file:
+
 ```
 OPENAI_API_KEY=sk....
 GH_USERNAME=username
