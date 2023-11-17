@@ -9,16 +9,19 @@ $ python -m ibl_github_bot --help
 Usage: python -m ibl_github_bot [OPTIONS]
 
 Options:
-  --repo TEXT          Repository to clone. Must be of the format
-                       username/reponame. eg. ibleducation/ibl-ai-bot-app
-  --branch TEXT        Branch to clone repository from.
-  --github-token TEXT  Github token used to authenticate and clone repository.
-                       Token must have write access to the repository.
-  -f, --file TEXT      Target file in repository to test. Defaults to all
-                       files. You can pass multiple files with -f file1 -f
-                       file2
-  --cleanup            Delete cloned repository after test generation.
-  --help               Show this message and exit.
+  --repo TEXT             Repository to clone. Must be of the format
+                          username/reponame. eg. ibleducation/ibl-ai-github-
+                          bot
+  --branch TEXT           Branch to clone repository from.
+  -f, --file TEXT         Target file in repository to test. Defaults to all
+                          files. You can pass multiple files with -f file1 -f
+                          file2
+  --cleanup               Delete cloned repository after test generation.
+  --github-token TEXT     Github token used to authenticate and clone
+                          repository. Token must have write access to the
+                          repository.
+  --github-username TEXT  Username associated with the github token
+  --help                  Show this message and exit.
 ```
 
 For example:
@@ -35,6 +38,20 @@ A new branch and related pull request will be created on the repository specifie
 > [!WARNING]
 > **Do not blindly merge the pull requests created. Always check out the pull request and run the tests.**
 
+## Environment Variables
+Environment variables for **ibl_github_bot** can be placed in a `.env` file in the current working directory or exported as system environment variables. 
+Here are a list of configurable environment variables
+
+1. **GH_TOKEN**: This is stores a valid github token to be used by the bot to pull repositories, push commits and create pull requests
+2. **GH_USERNAME**: The appropriate username associated with the github token
+3. **OPENAI_API_KEY**: A valid Openai key with gpt4 access. This is **mandatory**.
+
+Below is a sample `.env` file
+```
+OPENAI_API_KEY=sk....
+GH_USERNAME=username
+GH_TOKEN=gh-............
+```
 
 ## Configuration
 

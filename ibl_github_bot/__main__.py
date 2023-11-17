@@ -14,17 +14,10 @@ load_dotenv(find_dotenv())
 @click.option(
     "--repo",
     type=str,
-    default="Joetib/webapp",
-    help="Repository to clone. Must be of the format username/reponame. eg. ibleducation/ibl-ai-bot-app",
+    help="Repository to clone. Must be of the format username/reponame. eg. ibleducation/ibl-ai-github-bot",
 )
 @click.option(
     "--branch", type=str, default="main", help="Branch to clone repository from."
-)
-@click.option(
-    "--github-token",
-    type=str,
-    default=None,
-    help="Github token used to authenticate and clone repository. Token must have write access to the repository.",
 )
 @click.option(
     "--file",
@@ -37,18 +30,36 @@ load_dotenv(find_dotenv())
     default=False,
     help="Delete cloned repository after test generation.",
 )
-def main(repo: str, branch: str, github_token: str, cleanup: bool = True, file: list[str]=None):
+@click.option(
+    "--github-token",
+    type=str,
+    default=None,
+    help="Github token used to authenticate and clone repository. Token must have write access to the repository.",
+)
+
+@click.option(
+    "--github-username",
+    type=str,
+    default=None,
+    help="Username associated with the github token"
+)
+def main(repo: str, branch: str, github_token: str, github_username: str, cleanup: bool = True, file: list[str]=None):
     if not github_token:
         github_token = os.getenv("GH_TOKEN")
     if not github_token:
         raise ValueError(
             "Please provide a github token or store it as `GH_TOKEN` environment variable."
         )
-    print(files)
+    if not github_username:
+        github_username = os.getenv("GH_USERNAME")
+    if not github_username:
+        raise ValueError(
+            "Please provide a github username or store it as `GH_USERNAME` environment variable."
+        )
     loop = asyncio.get_event_loop()
     loop.run_until_complete(
         create_tests_for_repo(
-            "Joetib", repo, branch, token=github_token, cleanup=cleanup,
+            github_username, repo, branch, token=github_token, cleanup=cleanup,
             target_files=file
         )
     )
